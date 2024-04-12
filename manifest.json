@@ -1,0 +1,17 @@
+{
+  "domain": "google_vertex_ai_conversation",
+  "name": "Google Vertex AI Conversation",
+  "codeowners": [
+    "@caraar12345"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "conversation"
+  ],
+  "documentation": "https://github.com/caraar12345/home-assistant-google-vertex-ai-conversation",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": [
+    "google-cloud-aiplatform==1.47.0"
+  ]
+}
