@@ -9,7 +9,9 @@ from types import MappingProxyType
 from typing import Any
 
 from google.api_core.exceptions import ClientError
-import google.generativeai as genai
+import google.oauth2.service_account as google_service_account
+import vertexai
+from google.cloud import aiplatform
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -18,7 +20,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_API_KEY
+from homeassistant.const import CONF_REGION
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import (
     NumberSelector,
@@ -46,7 +48,9 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_API_KEY): str,
+        vol.Required("CONF_PROJECT_ID"): str,
+        vol.Required("CONF_SERVICE_ACCOUNT_JSON"): str,
+        vol.Required(CONF_REGION): str,
     }
 )
 
@@ -67,8 +71,12 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    genai.configure(api_key=data[CONF_API_KEY])
-    await hass.async_add_executor_job(partial(genai.list_models))
+    creds = google_service_account.Credentials.from_service_account_info(
+        data["CONF_SERVICE_ACCOUNT_JSON"]
+    ).with_quota_project(data["CONF_PROJECT_ID"])
+    # genai.configure(api_key=data[CONF_API_KEY])
+    aiplatform.init(project=data["CONF_PROJECT_ID"], location=data[CONF_REGION], credentials=creds)
+    await hass.async_add_executor_job(partial(aiplatform.Model("gemini")))
 
 
 class GoogleGenerativeAIConfigFlow(ConfigFlow, domain=DOMAIN):

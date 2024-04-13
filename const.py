@@ -1,6 +1,6 @@
-"""Constants for the Google Generative AI Conversation integration."""
+"""Constants for the Google Vertex AI Conversation integration."""
 
-DOMAIN = "google_generative_ai_conversation"
+DOMAIN = "google_vertex_ai_conversation"
 CONF_PROMPT = "prompt"
 DEFAULT_PROMPT = """This smart home is controlled by Home Assistant.
 
