@@ -4,6 +4,8 @@ Basically just the [built-in integration](https://www.home-assistant.io/integrat
 
 It will probably break. But it seems to work mostly!
 
+**Huge thanks to [@tronikos](https://github.com/tronikos) for writing the vast majority of this integration!**
+
 ## Usage
 
 - Create a service account in a GCP project with the `Vertex AI User` role.
