@@ -1,48 +1,56 @@
 {
-    "config": {
-        "error": {
-            "cannot_connect": "Failed to connect",
-            "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
-        },
-        "step": {
-            "user": {
-                "data": {
-                    "api_key": "API key"
-                }
-            }
+  "config": {
+    "step": {
+      "user": {
+        "description": "Provide a service account that Home Assistant can use for GCP/Vertex AI",
+        "data": {
+          "project_id": "Project ID",
+          "region": "Region",
+          "service_acct_json": "Service Account JSON"
         }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "data": {
-                    "max_tokens": "Maximum tokens to return in response",
-                    "model": "Model",
-                    "prompt": "Prompt Template",
-                    "temperature": "Temperature",
-                    "top_k": "Top K",
-                    "top_p": "Top P"
-                }
-            }
-        }
-    },
-    "services": {
-        "generate_content": {
-            "description": "Generate content from a prompt consisting of text and optionally images",
-            "fields": {
-                "image_filename": {
-                    "description": "Images",
-                    "example": "/config/www/image.jpg",
-                    "name": "Image filename"
-                },
-                "prompt": {
-                    "description": "The prompt",
-                    "example": "Describe what you see in these images",
-                    "name": "Prompt"
-                }
-            },
-            "name": "Generate content"
-        }
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "prompt": "Prompt Template",
+          "model": "[%key:common::generic::model%]",
+          "temperature": "Temperature",
+          "top_p": "Top P",
+          "top_k": "Top K",
+          "max_tokens": "Maximum tokens to return in response"
+        }
+      }
+    }
+  },
+  "services": {
+    "generate_content": {
+      "name": "Generate content",
+      "description": "Generate content from a prompt consisting of text and optionally images",
+      "fields": {
+        "prompt": {
+          "name": "Prompt",
+          "description": "The prompt",
+          "example": "Describe what you see in these images"
+        },
+        "image_filename": {
+          "name": "Image filename",
+          "description": "Images",
+          "example": "/config/www/image.jpg"
+        },
+        "service_model": {
+          "name": "Model to use",
+          "description": "Which AI model should be used? (defaults to gemini-pro-vision with images, gemini-pro otherwise)",
+          "example": "gemini-pro"
+        }
+      }
+    }
+  }
 }

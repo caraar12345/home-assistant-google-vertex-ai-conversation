@@ -2,8 +2,11 @@
   "config": {
     "step": {
       "user": {
+        "description": "Provide a service account that Home Assistant can use for GCP/Vertex AI",
         "data": {
-          "api_key": "[%key:common::config_flow::data::api_key%]"
+          "project_id": "Project ID",
+          "region": "Region",
+          "service_acct_json": "Service Account JSON"
         }
       }
     },
@@ -41,6 +44,11 @@
           "name": "Image filename",
           "description": "Images",
           "example": "/config/www/image.jpg"
+        },
+        "service_model": {
+          "name": "Model to use",
+          "description": "Which AI model should be used? (defaults to gemini-pro-vision with images, gemini-pro otherwise)",
+          "example": "gemini-pro"
         }
       }
     }

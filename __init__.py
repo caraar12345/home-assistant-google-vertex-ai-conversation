@@ -1,21 +1,23 @@
-"""The Google Generative AI Conversation integration."""
+"""The Google Vertex AI Conversation integration."""
 
 from __future__ import annotations
 
 from functools import partial
+import json
 import logging
 import mimetypes
 from pathlib import Path
 from typing import Literal
 
 from google.api_core.exceptions import ClientError
-import google.generativeai as genai
-import google.generativeai.types as genai_types
+import google.oauth2.service_account as google_service_account
+import vertexai
+import vertexai.preview.generative_models as vertexai_genmodels
 import voluptuous as vol
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_API_KEY, MATCH_ALL
+from homeassistant.const import MATCH_ALL
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
@@ -34,16 +36,22 @@ from homeassistant.util import ulid
 from .const import (
     CONF_CHAT_MODEL,
     CONF_MAX_TOKENS,
+    CONF_PROJECT_ID,
     CONF_PROMPT,
+    CONF_REGION,
+    CONF_SERVICE_ACCOUNT_JSON,
+    CONF_SERVICE_MODEL,
     CONF_TEMPERATURE,
     CONF_TOP_K,
     CONF_TOP_P,
     DEFAULT_CHAT_MODEL,
     DEFAULT_MAX_TOKENS,
     DEFAULT_PROMPT,
+    DEFAULT_SERVICE_MODEL,
     DEFAULT_TEMPERATURE,
     DEFAULT_TOP_K,
     DEFAULT_TOP_P,
+    DEFAULT_VISION_MODEL,
     DOMAIN,
 )
 
@@ -61,6 +69,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         """Generate content from text and optionally images."""
         prompt_parts = [call.data[CONF_PROMPT]]
         image_filenames = call.data[CONF_IMAGE_FILENAME]
+        model_name = (
+            call.data.get(CONF_SERVICE_MODEL, DEFAULT_SERVICE_MODEL)
+            if not image_filenames
+            else call.data.get(CONF_SERVICE_MODEL, DEFAULT_VISION_MODEL)
+        )
+
         for image_filename in image_filenames:
             if not hass.config.is_allowed_path(image_filename):
                 raise HomeAssistantError(
@@ -74,24 +88,19 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if mime_type is None or not mime_type.startswith("image"):
                 raise HomeAssistantError(f"`{image_filename}` is not an image")
             prompt_parts.append(
-                {
-                    "mime_type": mime_type,
-                    "data": await hass.async_add_executor_job(
-                        Path(image_filename).read_bytes
-                    ),
-                }
+                vertexai_genmodels.Image.from_bytes(
+                    await hass.async_add_executor_job(Path(image_filename).read_bytes)
+                )
             )
 
-        model_name = "gemini-pro-vision" if image_filenames else "gemini-pro"
-        model = genai.GenerativeModel(model_name=model_name)
+        model = vertexai_genmodels.GenerativeModel(model_name=model_name)
 
         try:
             response = await model.generate_content_async(prompt_parts)
         except (
             ClientError,
             ValueError,
-            genai_types.BlockedPromptException,
-            genai_types.StopCandidateException,
+            vertexai_genmodels.ResponseValidationError,
         ) as err:
             raise HomeAssistantError(f"Error generating content: {err}") from err
 
@@ -107,6 +116,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 vol.Optional(CONF_IMAGE_FILENAME, default=[]): vol.All(
                     cv.ensure_list, [cv.string]
                 ),
+                vol.Optional(CONF_SERVICE_MODEL): cv.string,
             }
         ),
         supports_response=SupportsResponse.ONLY,
@@ -116,12 +126,21 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Google Generative AI Conversation from a config entry."""
-    genai.configure(api_key=entry.data[CONF_API_KEY])
+    creds = google_service_account.Credentials.from_service_account_info(
+        json.loads(entry.data[CONF_SERVICE_ACCOUNT_JSON])
+    ).with_quota_project(entry.data[CONF_PROJECT_ID])
+
+    vertexai.init(
+        project=entry.data[CONF_PROJECT_ID],
+        location=entry.data[CONF_REGION],
+        credentials=creds,
+    )
 
     try:
         await hass.async_add_executor_job(
             partial(
-                genai.get_model, entry.options.get(CONF_CHAT_MODEL, DEFAULT_CHAT_MODEL)
+                vertexai_genmodels.GenerativeModel,
+                entry.options.get(CONF_CHAT_MODEL, DEFAULT_CHAT_MODEL),
             )
         )
     except ClientError as err:
@@ -136,7 +155,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload GoogleGenerativeAI."""
-    genai.configure(api_key=None)
+    vertexai.init(credentials=None)
     conversation.async_unset_agent(hass, entry)
     return True
 
@@ -148,7 +167,7 @@ class GoogleGenerativeAIAgent(conversation.AbstractConversationAgent):
         """Initialize the agent."""
         self.hass = hass
         self.entry = entry
-        self.history: dict[str, list[genai_types.ContentType]] = {}
+        self.history: dict[str, list[vertexai_genmodels.Part]] = {}
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:
@@ -160,7 +179,7 @@ class GoogleGenerativeAIAgent(conversation.AbstractConversationAgent):
     ) -> conversation.ConversationResult:
         """Process a sentence."""
         raw_prompt = self.entry.options.get(CONF_PROMPT, DEFAULT_PROMPT)
-        model = genai.GenerativeModel(
+        model = vertexai_genmodels.GenerativeModel(
             model_name=self.entry.options.get(CONF_CHAT_MODEL, DEFAULT_CHAT_MODEL),
             generation_config={
                 "temperature": self.entry.options.get(
@@ -195,8 +214,12 @@ class GoogleGenerativeAIAgent(conversation.AbstractConversationAgent):
                 response=intent_response, conversation_id=conversation_id
             )
 
-        messages[0] = {"role": "user", "parts": prompt}
-        messages[1] = {"role": "model", "parts": "Ok"}
+        messages[0] = vertexai_genmodels.Content(
+            role="user", parts=[vertexai_genmodels.Part.from_text(prompt)]
+        )
+        messages[1] = vertexai_genmodels.Content(
+            role="model", parts=[vertexai_genmodels.Part.from_text("Ok")]
+        )
 
         _LOGGER.debug("Input: '%s' with history: %s", user_input.text, messages)
 
@@ -206,8 +229,7 @@ class GoogleGenerativeAIAgent(conversation.AbstractConversationAgent):
         except (
             ClientError,
             ValueError,
-            genai_types.BlockedPromptException,
-            genai_types.StopCandidateException,
+            vertexai_genmodels.ResponseValidationError,
         ) as err:
             _LOGGER.error("Error sending message: %s", err)
             intent_response = intent.IntentResponse(language=user_input.language)
@@ -219,7 +241,7 @@ class GoogleGenerativeAIAgent(conversation.AbstractConversationAgent):
                 response=intent_response, conversation_id=conversation_id
             )
 
-        _LOGGER.debug("Response: %s", chat_response.parts)
+        _LOGGER.debug("Response: %s", chat_response.to_dict)
         self.history[conversation_id] = chat.history
 
         intent_response = intent.IntentResponse(language=user_input.language)

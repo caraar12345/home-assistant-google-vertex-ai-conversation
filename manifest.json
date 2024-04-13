@@ -12,6 +12,8 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "requirements": [
-    "google-cloud-aiplatform==1.47.0"
-  ]
+    "google-cloud-aiplatform==1.46.0",
+    "vertexai==1.46.0"
+  ],
+  "version":"1.0.0-a"
 }
